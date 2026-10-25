@@ -13,7 +13,8 @@ const addDays = (d, n) => {
 export function streakInfo(todayIso = todayISO()) {
   // Wochentage, an denen laut Plan trainiert wird (z. B. Mo, Di, Do, Fr, Sa)
   const planned = new Set(store.all('days').map(d => d.weekday).filter(w => w != null));
-  const trained = new Set(store.all('sessions').filter(s => s.finishedAt).map(s => s.date));
+  // importierte Startwerte sind keine Gym-Besuche
+  const trained = new Set(store.all('sessions').filter(s => s.finishedAt && !s.imported).map(s => s.date));
   const today = dateFromISO(todayIso);
   const dates = [...trained].sort();
   const first = dates.length ? dateFromISO(dates[0]) : null;

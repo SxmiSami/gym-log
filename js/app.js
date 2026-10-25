@@ -11,7 +11,7 @@ import {
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.0.4';
+const VERSION = '1.0.5';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -34,9 +34,15 @@ function activeSession() {
   return store.all('sessions').filter(s => !s.finishedAt).sort((a, b) => b.startedAt - a.startedAt)[0] || null;
 }
 
+// Gym-Besuche: abgeschlossene Trainings ohne die importierten Startwerte.
+// Die Startwerte zählen nicht für Verlauf und Streak, bleiben aber für
+// "Letztes Mal", Vorschläge und Diagramme erhalten.
 function finishedSessions() {
-  return store.all('sessions').filter(s => s.finishedAt).sort((a, b) => b.startedAt - a.startedAt);
+  return store.all('sessions').filter(s => s.finishedAt && !s.imported).sort((a, b) => b.startedAt - a.startedAt);
 }
+
+// "Startwert" statt Datum für Werte aus der importierten Liste
+const whenTxt = s => (s.imported ? 'Startwert' : relDays(s.date));
 
 function countSets(s) {
   let done = 0, total = 0;
@@ -432,7 +438,7 @@ function entryCard(s, e) {
       <button class="icon-btn" data-action="entry-menu" aria-label="Optionen">${icon('dots')}</button>
     </header>
     ${ex?.note ? `<p class="ex-pin">${icon('info')}<span>${esc(ex.note)}</span></p>` : ''}
-    ${last ? `<p class="ex-last"><span class="tag">Letztes Mal</span><span class="muted">${fmtDate(last.session.date)}</span><b>${setsSummary(last.entry.sets)}</b></p>` : ''}
+    ${last ? `<p class="ex-last"><span class="tag">${last.session.imported ? 'Startwert' : 'Letztes Mal'}</span>${last.session.imported ? '' : `<span class="muted">${fmtDate(last.session.date)}</span>`}<b>${setsSummary(last.entry.sets)}</b></p>` : ''}
     ${s.finishedAt ? '' : `<div class="ex-tip">
       <p class="tip-head">${icon('bulb')}<b>Vorschlag</b>${showTipSets ? `<span>${setsSummary(tipSets)}</span>` : ''}</p>
       <ul>${sug.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
@@ -580,7 +586,10 @@ function viewHistory() {
       ${s.imported ? '<span class="pill">Import</span>' : ''}${icon('chev', 'chev')}</a>`;
   }
   flush();
-  if (!list.length) html += '<p class="empty">Noch keine Trainings. Starte dein erstes unter „Training“.</p>';
+  if (!list.length) {
+    const hasStart = store.all('sessions').some(s => s.imported);
+    html += `<p class="empty">Noch keine Trainings. Starte dein erstes unter „Training“.${hasStart ? '<br>Deine Startwerte aus der Liste bleiben für „Letztes Mal“ und die Vorschläge erhalten.' : ''}</p>`;
+  }
   return { title: 'Verlauf', tab: 'history', html };
 }
 
@@ -639,7 +648,7 @@ function viewProgress() {
     const weighted = h.some(x => x.entry.sets.some(s => s.w > 0));
     const series = h.slice(0, 12).reverse().map(x => metricValue(x.entry, weighted ? 'e1rm' : 'reps'));
     return `<a class="list-row" href="#/exercise/${ex.id}" data-name="${esc(ex.name.toLowerCase())}">
-      <div class="grow"><strong>${esc(ex.name)}</strong><span class="muted small">${h[0] ? `${setsSummary(h[0].entry.sets)} · ${relDays(h[0].session.date)}` : 'Noch nicht trainiert'}</span></div>
+      <div class="grow"><strong>${esc(ex.name)}</strong><span class="muted small">${h[0] ? `${setsSummary(h[0].entry.sets)} · ${whenTxt(h[0].session)}` : 'Noch nicht trainiert'}</span></div>
       ${sparkline(series)}${icon('chev', 'chev')}</a>`;
   };
   return {
@@ -665,16 +674,17 @@ function viewExercise(id) {
   const points = chrono.map(x => ({ x: x.session.startedAt, y: metricValue(x.entry, m) }));
   const b = bests(h);
   const usedIn = store.all('days').filter(d => d.items.some(it => it.exId === id)).sort(byOrder).map(d => d.name);
-  const lastTxt = h[0] ? 'zuletzt ' + relDays(h[0].session.date) : '';
+  const visits = h.filter(x => !x.session.imported);
+  const lastTxt = visits[0] ? 'zuletzt ' + relDays(visits[0].session.date) : h.length ? 'bisher nur Startwert' : '';
   const tiles = weighted
     ? [
-      ['Höchstgewicht', b.heavy ? `${fmtNum(b.maxW)} kg` : '–', b.heavy ? `× ${fmtNum(b.heavy.set.r)} · ${fmtDate(b.heavy.session.date, { weekday: false })}` : ''],
+      ['Höchstgewicht', b.heavy ? `${fmtNum(b.maxW)} kg` : '–', b.heavy ? `× ${fmtNum(b.heavy.set.r)} · ${b.heavy.session.imported ? 'Startwert' : fmtDate(b.heavy.session.date, { weekday: false })}` : ''],
       ['Gesch. 1RM', b.best ? `${fmtNum(b.maxE, 1)} kg` : '–', b.best ? `aus ${fmtNum(b.best.set.w)} × ${fmtNum(b.best.set.r)}` : ''],
-      ['Trainings', String(h.length), lastTxt],
+      ['Trainings', String(visits.length), lastTxt],
     ]
-    : [['Beste Wdh', b.maxR ? fmtNum(b.maxR) : '–', ''], ['Trainings', String(h.length), lastTxt]];
+    : [['Beste Wdh', b.maxR ? fmtNum(b.maxR) : '–', ''], ['Trainings', String(visits.length), lastTxt]];
   const histRows = h.map(x => `<a class="list-row" href="#/session/${x.session.id}">
-      <div class="grow"><strong>${fmtDate(x.session.date)}</strong><span class="muted small">${esc(x.session.name)}</span></div>
+      <div class="grow"><strong>${x.session.imported ? 'Startwert' : fmtDate(x.session.date)}</strong><span class="muted small">${x.session.imported ? 'aus deiner Liste' : esc(x.session.name)}</span></div>
       <span class="sets-text">${setsSummary(x.entry.sets)}</span></a>`).join('');
   const st = store.settings();
   const restOpts = [['', `Standard (${fmtRest(st.restSeconds)})`], ...[45, 60, 75, 90, 120, 150, 180, 240, 300].map(s => [String(s), fmtRest(s)])];
