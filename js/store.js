@@ -100,6 +100,25 @@ export function remove(c, id) {
   touched();
 }
 
+// Papierkorb: gelöschte Datensätze behalten ihren Inhalt, bis sie endgültig gelöscht werden
+export const trash = c => Object.values(data[c]).filter(r => r.deleted && !r.purged);
+
+export function restore(c, id) {
+  const r = data[c][id];
+  if (!r?.deleted || r.purged) return;
+  const { deleted, ...rest } = r;
+  data[c][id] = { ...rest, updatedAt: now() };
+  touched();
+}
+
+// Endgültig löschen: Inhalt weg, nur die Lösch-Markierung bleibt,
+// damit der Datensatz auch auf den anderen Geräten verschwindet
+export function purge(c, id) {
+  if (!data[c][id]) return;
+  data[c][id] = { id, deleted: true, purged: true, updatedAt: now() };
+  touched();
+}
+
 export function setSettings(patch) {
   data.settings = { ...data.settings, ...patch, updatedAt: now() };
   touched();

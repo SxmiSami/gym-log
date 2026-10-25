@@ -200,6 +200,9 @@ body.rest-on main { padding-bottom: calc(var(--tab-h) + env(safe-area-inset-bott
 .btn.block { display: flex; width: 100%; margin-top: 12px; }
 .btn.lg { min-height: 54px; font-size: 17px; }
 .btn-row { display: flex; gap: 10px; margin-top: 12px; }
+.btn.sm { min-height: 38px; padding: 0 12px; font-size: 14px; border-radius: 11px; }
+.trash-row { gap: 8px; padding-right: 8px; }
+.trash-row .icon-btn .i { width: 20px; height: 20px; }
 
 /* ---------- Formulare ---------- */
 .field-block { display: block; margin-top: 12px; }

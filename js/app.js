@@ -10,7 +10,7 @@ import {
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.0.2';
+const VERSION = '1.0.3';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -717,6 +717,7 @@ function viewBody() {
 
 function viewPlans() {
   const days = store.all('days').sort(byOrder);
+  const trashCount = store.trash('days').length;
   const rows = days.map((d, i) => {
     const groups = [...new Set(d.items.map(it => it.group).filter(Boolean))];
     return `<div class="day-row">
@@ -735,7 +736,8 @@ function viewPlans() {
     title: 'Pläne', tab: 'plans',
     html: `<div class="card flush">${rows || '<p class="empty">Noch keine Trainingstage.</p>'}</div>
       <button class="btn ghost block" data-action="add-day">${icon('plus')} Trainingstag hinzufügen</button>
-      <a class="btn ghost block" href="#/exercises">${icon('list')} Alle Übungen verwalten</a>`,
+      <a class="btn ghost block" href="#/exercises">${icon('list')} Alle Übungen verwalten</a>
+      ${trashCount ? `<a class="btn text block" href="#/settings/papierkorb">${icon('trash')} Papierkorb (${trashCount})</a>` : ''}`,
   };
 }
 
@@ -816,7 +818,21 @@ function renderSyncBtn(st) {
   $sync.setAttribute('aria-label', 'Sync: ' + statusText());
 }
 
-function viewSettings() {
+function trashSection() {
+  const days = store.trash('days').sort((a, b) => b.updatedAt - a.updatedAt);
+  const rows = days.map(d => `<div class="list-row trash-row">
+      <div class="grow"><strong>${esc(d.name)}</strong><span class="muted small">${nUebungen(d.items?.length || 0)} · gelöscht ${relTime(d.updatedAt)}</span></div>
+      <button class="btn soft sm" data-action="trash-restore" data-id="${d.id}">Wiederherstellen</button>
+      <button class="icon-btn danger-text" data-action="trash-purge" data-id="${d.id}" aria-label="„${esc(d.name)}“ endgültig löschen">${icon('trash')}</button>
+    </div>`).join('');
+  return `<h3 class="section-label" id="papierkorb">Papierkorb</h3>
+    <div class="card flush">
+      ${rows || '<p class="empty small">Leer. Gelöschte Trainingstage landen hier und lassen sich wiederherstellen.</p>'}
+      ${days.length > 1 ? `<button class="list-row danger-text" data-action="trash-empty">${icon('trash')}<div class="grow"><strong>Papierkorb leeren</strong></div></button>` : ''}
+    </div>`;
+}
+
+function viewSettings(arg) {
   const st = store.settings();
   const loc = store.getLocal();
   const cfg = loc.sync || {};
@@ -825,6 +841,8 @@ function viewSettings() {
   const rest = [45, 60, 75, 90, 120, 150, 180, 240, 300];
   return {
     title: 'Mehr', tab: 'settings',
+    // erst nach dem Zurückscrollen von render() zum Papierkorb springen
+    mount: () => { if (arg === 'papierkorb') setTimeout(() => document.getElementById('papierkorb')?.scrollIntoView({ block: 'start' }), 0); },
     html: `<h3 class="section-label">Synchronisierung</h3>
       <div class="card form">
         <p class="status-line s-${sync.getStatus().state}" id="sync-status">${esc(statusText())}</p>
@@ -872,6 +890,8 @@ function viewSettings() {
         <button class="list-row" data-action="export">${icon('download')}<div class="grow"><strong>Backup exportieren</strong><span class="muted small">Alle Daten als JSON-Datei</span></div></button>
         <button class="list-row" data-action="import">${icon('upload')}<div class="grow"><strong>Daten importieren</strong><span class="muted small">Backup oder Startdaten – wird mit den vorhandenen Daten zusammengeführt</span></div></button>
       </div>
+
+      ${trashSection()}
 
       <h3 class="section-label">Als App installieren</h3>
       <div class="card">
@@ -1200,9 +1220,28 @@ const actions = {
   },
   async 'delete-day'(el) {
     const d = store.get('days', el.dataset.id);
-    if (!d || !(await confirmSheet(`Trainingstag „${d.name}“ löschen? Dein Verlauf bleibt erhalten.`, { ok: 'Löschen', danger: true }))) return;
+    if (!d || !(await confirmSheet(`„${d.name}“ in den Papierkorb verschieben? Unter Mehr → Papierkorb kannst du den Tag jederzeit wiederherstellen.`, { ok: 'In den Papierkorb', danger: true }))) return;
     store.remove('days', d.id);
     location.hash = '#/plans';
+    toast(`„${d.name}“ liegt jetzt im Papierkorb`);
+  },
+  'trash-restore'(el) {
+    const d = store.getAny('days', el.dataset.id);
+    store.restore('days', el.dataset.id);
+    toast(`„${d?.name}“ ist wieder bei deinen Plänen`);
+    rerender();
+  },
+  async 'trash-purge'(el) {
+    const d = store.getAny('days', el.dataset.id);
+    if (!(await confirmSheet(`„${d?.name}“ endgültig löschen? Das lässt sich nicht rückgängig machen. Dein Trainingsverlauf bleibt erhalten.`, { ok: 'Endgültig löschen', danger: true }))) return;
+    store.purge('days', el.dataset.id);
+    rerender();
+  },
+  async 'trash-empty'() {
+    const list = store.trash('days');
+    if (!(await confirmSheet(`Alle ${list.length} Trainingstage im Papierkorb endgültig löschen? Das lässt sich nicht rückgängig machen.`, { ok: 'Papierkorb leeren', danger: true }))) return;
+    list.forEach(d => store.purge('days', d.id));
+    rerender();
   },
   async 'new-exercise'() {
     const name = await promptSheet('Neue Übung', '', { placeholder: 'Name der Übung', ok: 'Anlegen' });
