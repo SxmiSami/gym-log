@@ -2,7 +2,7 @@
 // Erst Wiederholungen im Zielbereich steigern, oben angekommen Gewicht erhöhen.
 
 import * as store from './store.js';
-import { fmtNum, rangeText, roundTo, clamp } from './util.js';
+import { fmtNum, rangeText, roundTo } from './util.js';
 
 // Geschätztes 1RM nach Epley
 export function e1rm(w, r) {
@@ -84,9 +84,40 @@ function satzList(rows) {
 
 const inAll = n => (n === 1 ? '' : n === 2 ? 'in beiden Sätzen ' : `in allen ${n} Sätzen `);
 
+// Erwartete Wdh bei einem anderen Gewicht (Epley-Formel umgestellt), leicht vorsichtig gerundet
+const repsAt = (e, w) => (w > 0 ? 30 * (e / w - 1) : 0);
+const realistic = p => Math.max(1, Math.floor(p + 0.3));
+
+// Mit gleichem Gewicht ermüdet man von Satz zu Satz: ein späterer Satz bekommt
+// nie mehr Wdh als der davor.
+function descending(arr) {
+  for (let i = 1; i < arr.length; i++) if (arr[i] > arr[i - 1]) arr[i] = arr[i - 1];
+  return arr;
+}
+
+// Verteilt `gain` zusätzliche Wdh auf ein abfallendes Profil: zuerst wird der
+// größte Einbruch gegenüber dem vorherigen Satz aufgefüllt, sonst Satz 1 gesteigert.
+// Aus 8 · 8 · 7 wird so 9 · 8 · 8 statt 9 · 9 · 8.
+function addReps(base, gain, cap) {
+  const t = [...base];
+  for (let k = 0; k < gain; k++) {
+    let best = -1, bestGap = -1;
+    t.forEach((v, i) => {
+      const ceiling = i === 0 ? cap : Math.min(cap, t[i - 1]);
+      if (v + 1 > ceiling) return;
+      const gap = i === 0 ? 0 : t[i - 1] - v;
+      if (gap > bestGap) { best = i; bestGap = gap; }
+    });
+    if (best < 0) break;
+    t[best]++;
+  }
+  return t;
+}
+
 // Vorschlag für die geplanten Sätze: [{ w, target }] + Begründungen.
 // Sätze mit gleichem Zielbereich und gleichem Gewicht werden gemeinsam bewertet,
 // so bekommt z. B. ein leichterer letzter Satz seinen eigenen Vorschlag.
+// Die Ziel-Wdh fallen von Satz zu Satz ab (Ermüdung), gesteigert wird über die Summe.
 export function suggest(exId, planned, opts = {}, hist = history(exId, opts)) {
   if (!hist.length) {
     const w = opts.startWeight ?? null;
@@ -125,56 +156,106 @@ export function suggest(exId, planned, opts = {}, hist = history(exId, opts)) {
     const done = g.rows.filter(r => r.r != null);
     const missing = g.rows.filter(r => r.r == null);
     const weighted = w > 0;
-    const step = r => (r.r == null ? min : clamp(Math.floor(r.r) + 1, min, max));
+    const cap = max ?? Infinity;
+    const own = groups.length > 1 && n === 1; // "Satz X:" steht dann schon davor
+
+    // Letztes Mal als abfallendes Profil (stärkster Satz zuerst),
+    // fehlende Sätze knapp unter dem letzten geschafften
+    const base = done.map(r => Math.min(Math.floor(r.r), cap)).sort((a, b) => b - a);
+    while (base.length < n) base.push(base.length ? Math.max(1, base[base.length - 1] - 1) : min ?? 1);
+    const lastSum = done.reduce((s, r) => s + Math.floor(r.r), 0);
+    const progress = () => {
+      const t = addReps(base, n >= 3 ? 2 : 1, cap);
+      const sum = t.reduce((s, v) => s + v, 0);
+      let txt;
+      if (t.every(v => v >= cap)) txt = `Ziel: alle Sätze auf ${max} – dann kommt mehr Gewicht`;
+      else if (sum > lastSum) txt = `insgesamt ${sum - lastSum} Wdh mehr als letztes Mal (${sum} statt ${lastSum})`;
+      else txt = 'Wdh halten und gleichmäßiger verteilen';
+      return { t, txt };
+    };
+    // Geschätztes 1RM je Satz (stärkster zuerst) – für den Wechsel auf ein anderes Gewicht
+    const e = done.map(r => e1rm(w, r.r)).sort((a, b) => b - a);
+    const predictAt = nw => {
+      const t = e.map(x => Math.min(cap, realistic(repsAt(x, nw))));
+      while (t.length < n) t.push(Math.max(1, t[t.length - 1] - 1));
+      return descending(t);
+    };
+    const missingTxt = missing.length ? `${satzList(missing)} ${missing.length > 1 ? 'fehlten' : 'fehlte'}` : '';
+
     let newW = w;
     let targets;
     let why;
 
     if (min == null) {
-      targets = g.rows.map(r => (r.r != null ? Math.floor(r.r) + 1 : null));
-      why = 'Kein Zielbereich festgelegt – versuch, das letzte Mal um je 1 Wdh zu schlagen.';
+      const p = progress();
+      targets = p.t;
+      why = `Kein Zielbereich festgelegt – ${p.txt}.`;
     } else if (!missing.length && done.every(r => r.r >= max)) {
       if (weighted) {
         newW = roundTo(w + inc);
-        targets = g.rows.map(() => min);
-        why = `Letztes Mal ${inAll(n)}${max}+ Wdh geschafft → +${fmtNum(inc)} kg auf ${kg(newW)}. Ziel wieder ab ${min} Wdh.`;
+        targets = predictAt(newW).map(v => Math.max(v, min));
+        why = `Letztes Mal ${inAll(n)}${max}+ Wdh → +${fmtNum(inc)} kg auf ${kg(newW)}. Mit dem höheren Gewicht sind etwa ${targets.join(' · ')} Wdh realistisch.`;
       } else {
-        targets = g.rows.map(r => Math.floor(r.r) + 1);
-        why = `Obere Grenze (${max} Wdh) erreicht → mehr Wdh oder mit Zusatzgewicht steigern.`;
+        targets = [...base];
+        why = `Obere Grenze (${max} Wdh) erreicht → mehr Wdh oder eine schwerere Variante.`;
       }
     } else if (done.some(r => r.r < min)) {
       const worst = done.reduce((a, b) => (b.r < a.r ? b : a));
       const avg = done.reduce((sum, r) => sum + r.r, 0) / done.length;
-      targets = g.rows.map(step);
       const prevBelow = prev && g.rows.some(r => {
         const ps = prev[r.i];
         return ps && ps.r > 0 && ps.r < min && (ps.w ?? null) === w;
       });
-      // Bei mehreren Gruppen steht "Satz X:" schon davor
-      const own = groups.length > 1 && n === 1;
-      if (weighted && avg <= min - 2 && w - inc >= w * 0.85) {
-        newW = roundTo(w - inc);
-        targets = g.rows.map(() => min);
+      // Deutlich zu schwer: das schwerste Gewicht suchen, mit dem der erste Satz
+      // wieder im Zielbereich landet (höchstens 20 % leichter)
+      let lighter = null;
+      if (weighted && avg <= min - 2) {
+        for (let nw = roundTo(w - inc); nw > 0 && nw >= w * 0.8; nw = roundTo(nw - inc)) {
+          if (repsAt(e[0], nw) + 0.3 >= min) { lighter = nw; break; }
+        }
+      }
+      if (lighter) {
+        newW = lighter;
+        targets = predictAt(newW);
         const how = done.length > 1 ? `Im Schnitt nur ${fmtNum(avg, 1)} Wdh` : `Nur ${fmtNum(worst.r)} Wdh`;
-        why = `${how} – deutlich unter ${min}. Etwas leichter (${kg(newW)}), damit du im Zielbereich trainierst.`;
-      } else if (prevBelow) {
-        why = weighted
-          ? `Schon zum 2. Mal unter ${min} Wdh mit ${kg(w)}. Gewicht halten und an ${min} Wdh arbeiten – oder etwas leichter gehen.`
-          : `Schon zum 2. Mal unter ${min} Wdh – weiter an ${min} Wdh arbeiten.`;
+        why = `${how} mit ${kg(w)} – für ${rangeText(min, max)} Wdh zu schwer. Mit ${kg(newW)} sind etwa ${targets.join(' · ')} Wdh drin.`;
       } else {
-        why = `${own ? 'Mit' : `Satz ${worst.i + 1} lag mit`} ${fmtNum(worst.r)} Wdh unter dem Ziel (${min}) → ${weighted ? 'Gewicht halten, ' : ''}Ziel: alle Sätze ab ${min} Wdh.`;
+        const below = `${own ? 'Mit' : `Satz ${worst.i + 1} lag mit`} ${fmtNum(worst.r)} Wdh unter dem Ziel (ab ${min})`;
+        if (missing.length) {
+          // erst wieder alle Sätze schaffen, bevor mehr Wdh dazukommen
+          targets = [...base];
+          why = `${below}, ${missingTxt} → ${weighted ? 'Gewicht halten und ' : ''}diesmal alle Sätze schaffen.`;
+        } else {
+          const p = progress();
+          targets = p.t;
+          if (prevBelow) {
+            why = weighted
+              ? `Schon zum 2. Mal unter ${min} Wdh mit ${kg(w)}. Gewicht halten und hocharbeiten: ${p.txt} – oder etwas leichter gehen.`
+              : `Schon zum 2. Mal unter ${min} Wdh – weiter hocharbeiten: ${p.txt}.`;
+          } else {
+            why = `${below} → ${weighted ? 'Gewicht halten und ' : ''}hocharbeiten: ${p.txt}.`;
+          }
+        }
       }
     } else if (missing.length) {
-      targets = g.rows.map(step);
-      const who = groups.length > 1 && missing.length === n ? 'Fehlte' : `${satzList(missing)} ${missing.length > 1 ? 'fehlten' : 'fehlte'}`;
+      targets = [...base];
+      const who = groups.length > 1 && missing.length === n ? 'Fehlte' : missingTxt;
       why = `${who} letztes Mal → ${weighted ? 'Gewicht halten und ' : ''}diesmal alle Sätze schaffen.`;
     } else {
-      targets = g.rows.map(step);
-      why = `Im Zielbereich (${rangeText(min, max)}) → ${weighted ? 'Gewicht halten, ' : ''}je Satz +1 Wdh.`;
+      const p = progress();
+      targets = p.t;
+      why = `Im Zielbereich (${rangeText(min, max)}) → ${weighted ? 'Gewicht halten, ' : ''}${p.txt}.`;
     }
 
-    g.rows.forEach((r, k) => { sets[r.i] = { w: newW, target: targets[k] }; });
+    g.rows.forEach((r, k) => { sets[r.i] = { w: newW, target: targets[k] ?? null }; });
     reasons.push((groups.length > 1 ? `${satzList(g.rows)}: ` : '') + why);
+  }
+
+  // Auch über Gruppen hinweg: gleiches Gewicht, gleicher Bereich → nicht mehr als der Satz davor
+  for (let i = 1; i < sets.length; i++) {
+    const a = sets[i - 1], b = sets[i];
+    const sameRange = planned[i].min === planned[i - 1].min && planned[i].max === planned[i - 1].max;
+    if (a && b && a.w === b.w && sameRange && b.target != null && a.target != null && b.target > a.target) b.target = a.target;
   }
   return { sets, reasons };
 }

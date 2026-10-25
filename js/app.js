@@ -10,7 +10,7 @@ import {
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.0.1';
+const VERSION = '1.0.2';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');

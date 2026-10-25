@@ -60,10 +60,14 @@ Jeder Sync ist ein Commit – das Daten-Repo ist damit gleichzeitig ein Backup m
 Pro Übung wird das letzte Training mit deinem Zielbereich verglichen (Sätze mit gleichem
 Bereich und gleichem Gewicht zusammen, z. B. bei `2x 5-8 + 1x 8-12`):
 
-- alle Sätze am oberen Ende → Gewicht + Schritt (Standard 2,5 kg, pro Übung einstellbar), Ziel wieder unten
-- im Zielbereich → Gewicht halten, je Satz +1 Wdh
-- unter dem Bereich → Gewicht halten; im Schnitt 2+ Wdh drunter → etwas leichter
-- zweimal in Folge drunter → Hinweis, ggf. leichter zu gehen
+- Die Ziel-Wdh fallen von Satz zu Satz ab (Ermüdung) – ein späterer Satz bekommt nie mehr Wdh als der davor.
+- im Zielbereich → Gewicht halten, insgesamt 1–2 Wdh mehr; zuerst wird der größte Einbruch
+  zwischen zwei Sätzen aufgefüllt (aus 8 · 8 · 7 wird 9 · 8 · 8)
+- alle Sätze am oberen Ende → Gewicht + Schritt (Standard 2,5 kg, pro Übung einstellbar);
+  die Ziel-Wdh für das neue Gewicht werden über das geschätzte 1RM berechnet
+- unter dem Bereich → Gewicht halten und hocharbeiten; im Schnitt 2+ Wdh drunter → das schwerste
+  Gewicht, mit dem der erste Satz wieder im Bereich landet (höchstens 20 % leichter)
+- Satz ausgelassen → erst wieder alle Sätze schaffen
 
 ## Updates
 
