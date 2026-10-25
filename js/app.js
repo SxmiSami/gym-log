@@ -10,7 +10,7 @@ import {
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.0.1';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -928,7 +928,8 @@ async function syncWithToast() {
 
 const actions = {
   back(el) {
-    if (ui.stack.length > 1) history.back();
+    // window.history: "history" ist hier der Trainingsverlauf aus progression.js
+    if (ui.stack.length > 1) window.history.back();
     else location.hash = el.dataset.href || '#/';
   },
   'sync-btn'() {
@@ -1088,7 +1089,7 @@ const actions = {
   },
   'done-edit'(el) {
     const target = '#/session/' + el.closest('[data-session]').dataset.session;
-    if (ui.stack[ui.stack.length - 2] === target) history.back();
+    if (ui.stack[ui.stack.length - 2] === target) window.history.back();
     else location.hash = target;
   },
   'rest-minus': () => timer.add(-15),
