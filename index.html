@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0e1013">
+  <meta name="description" content="Trainingspläne, Sätze und Fortschritt tracken – auch offline.">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gym Log">
+  <title>Gym Log</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <button id="back" class="icon-btn back-btn" data-action="back" aria-label="Zurück" hidden>
+      <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <h1 id="title">Gym Log</h1>
+    <button id="sync-btn" class="icon-btn sync-btn" data-action="sync-btn" aria-label="Sync"></button>
+  </header>
+
+  <main id="view"></main>
+
+  <div id="rest" class="rest" hidden></div>
+
+  <nav class="tabbar" aria-label="Navigation">
+    <div class="tabbar-inner">
+      <a class="tab" data-tab="home" href="#/">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5v11M17.5 6.5v11M3.5 9.5v5M20.5 9.5v5M6.5 12h11"/></svg><span>Training</span></a>
+      <a class="tab" data-tab="history" href="#/history">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5"/><path d="M3.5 3.5v5h5"/><path d="M12 7.5V12l3 2"/></svg><span>Verlauf</span></a>
+      <a class="tab" data-tab="progress" href="#/progress">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4v16h16"/><path d="M7.5 15l4-4.5 3 3 5-6"/></svg><span>Fortschritt</span></a>
+      <a class="tab" data-tab="plans" href="#/plans">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/></svg><span>Pläne</span></a>
+      <a class="tab" data-tab="settings" href="#/settings">
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg><span>Mehr</span></a>
+    </div>
+  </nav>
+
+  <input type="file" id="import-file" accept="application/json,.json" hidden>
+  <div id="sheet-root" class="sheet-root" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
