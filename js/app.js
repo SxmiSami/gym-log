@@ -3,14 +3,15 @@ import * as sync from './sync.js';
 import * as timer from './timer.js';
 import { history, suggest, bests, isPR, entryStats, metricValue } from './progression.js';
 import { lineChart, sparkline, weekBars } from './charts.js';
-import { icon } from './icons.js';
+import { icon, flameArt } from './icons.js';
+import { streakInfo } from './streak.js';
 import {
   esc, uid, fmtNum, fmtBig, parseNum, todayISO, dateFromISO, fmtDate, relDays, relTime,
   fmtDuration, parseScheme, formatScheme, schemeInput, rangeText, setsSummary, fmtClock,
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.0.3';
+const VERSION = '1.0.4';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -245,6 +246,29 @@ function viewWelcome() {
   };
 }
 
+const STREAK_STATE = { done: 'trainiert', missed: 'verpasst', today: 'heute Training', planned: 'Training geplant', off: 'Ruhetag' };
+
+function streakCard() {
+  const s = streakInfo();
+  const on = s.current > 0;
+  const risk = on && s.todayPlanned && !s.trainedToday;
+  let msg;
+  if (s.trainedToday) msg = 'Heute erledigt – stark!';
+  else if (s.todayPlanned) msg = on ? 'Heute ist Trainingstag – trainier, um deine Streak zu halten.' : 'Heute ist Trainingstag – starte eine neue Streak!';
+  else msg = on ? 'Heute Ruhetag – deine Streak bleibt bestehen.' : 'Mit deinem nächsten Training startet eine neue Streak.';
+  const days = s.week.map(d => `<div class="sw ${d.state}${d.isToday ? ' now' : ''}" title="${d.label}: ${STREAK_STATE[d.state]}">
+      <span class="sw-dot">${d.state === 'done' ? icon('check') : d.state === 'missed' ? icon('x') : ''}</span><small>${d.label}</small></div>`).join('');
+  return `<div class="card streak${on ? ' on' : ''}${risk ? ' risk' : ''}">
+    <div class="streak-top">
+      <div class="flame">${flameArt}</div>
+      <div class="streak-num"><b>${s.current}</b><span>${s.current === 1 ? 'Training' : 'Trainings'} in Folge</span></div>
+      ${s.best ? `<div class="streak-best"><span>Rekord</span><b>${s.best}</b></div>` : ''}
+    </div>
+    <p class="streak-msg">${msg}</p>
+    <div class="streak-week" aria-label="Diese Woche">${days}</div>
+  </div>`;
+}
+
 function viewHome() {
   if (store.isEmpty()) return viewWelcome();
   const act = activeSession();
@@ -306,7 +330,8 @@ function viewHome() {
 
   return {
     title: 'Training', tab: 'home', mount: startClocks,
-    html: `${hero}
+    html: `${streakCard()}
+      ${hero}
       <h3 class="section-label">Deine Trainingstage</h3>
       <div class="card flush">${rows || '<p class="empty">Noch keine Trainingstage.</p>'}</div>
       <button class="btn ghost block" data-action="start-empty">${icon('plus')} Freies Training</button>
@@ -473,10 +498,13 @@ function sessionPRs(s) {
 function summarySheet(s) {
   const st = sessionStats(s);
   const prs = sessionPRs(s);
+  const streak = streakInfo();
+  const newBest = streak.current > 1 && streak.current === streak.best;
   openSheet(`<div class="summary">
     <div class="summary-badge">${icon('trophy')}</div>
     <h2>Training gespeichert</h2>
     <p class="muted">${esc(s.name)} · ${fmtDate(s.date)}</p>
+    ${streak.current ? `<p class="streak-line">${icon('flame')}<b>${streak.current}</b> ${streak.current === 1 ? 'Training' : 'Trainings'} in Folge${newBest ? ' – neuer Rekord!' : ''}</p>` : ''}
     <div class="stat-row">
       <div><b>${fmtDuration(st.duration)}</b><span>Dauer</span></div>
       <div><b>${st.sets}</b><span>Sätze</span></div>

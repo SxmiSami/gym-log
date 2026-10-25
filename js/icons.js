@@ -35,7 +35,17 @@ const P = {
   scale: '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8.3 9.2a5.3 5.3 0 0 1 7.4 0l-2.3 2.6h-2.8z"/>',
   list: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
   search: '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>',
+  flame: '<path d="M12 2.5c.6 3.2-1.3 5.1-3 7.1-1.6 1.9-3 3.8-3 6.5a6 6 0 0 0 12 0c0-2.3-1-4.2-2.3-5.7-.35 1.4-1.1 2.4-2.2 2.95.45-3.7-.65-7.8-1.5-10.85z"/>',
 };
+
+// Große, gefüllte Flamme für die Streak-Anzeige
+export const flameArt = `<svg viewBox="0 0 48 48" aria-hidden="true">
+  <defs><linearGradient id="flame-grad" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#ff4d1a"/><stop offset=".6" stop-color="#ff8a1f"/><stop offset="1" stop-color="#ffc23d"/>
+  </linearGradient></defs>
+  <path class="f-outer" fill="url(#flame-grad)" d="M24 3c1.4 6.6-2.6 10.5-6.1 14.6C14.6 21.5 11.7 25.4 11.7 31a12.3 12.3 0 0 0 24.6 0c0-4.8-2.1-8.7-4.8-11.8-.7 2.9-2.3 5-4.6 6.1C27.8 17.7 25.6 9.3 24 3z"/>
+  <path class="f-inner" fill="#ffe08a" d="M24.2 25.5c.6 2.8-1.1 4.5-2.6 6.2-1.4 1.6-2.6 3.2-2.6 5.6a5.1 5.1 0 0 0 10.2 0c0-2.5-1.4-4.6-2.7-6.2-.3 1.1-.95 1.9-1.8 2.35.35-2.75-.15-5.6-.5-7.95z"/>
+</svg>`;
 
 export function icon(name, cls = '') {
   return `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${P[name] || ''}</svg>`;

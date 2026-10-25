@@ -1,7 +1,7 @@
 # Gym Log
 
 Web-App (PWA) zum Tracken deiner Trainingspläne: Sätze, Gewichte, Wiederholungen,
-Pausentimer, Vorschläge fürs nächste Training, Verlauf, Rekorde und Körpergewicht.
+Pausentimer, Vorschläge fürs nächste Training, Verlauf, Rekorde, Streak und Körpergewicht.
 Läuft auf iPhone, iPad und PC, funktioniert offline und gleicht sich über ein
 privates GitHub-Repository zwischen den Geräten ab.
 
@@ -15,6 +15,7 @@ privates GitHub-Repository zwischen den Geräten ab.
 | `js/sync.js` | Sync mit einer JSON-Datei in einem privaten GitHub-Repo |
 | `js/progression.js` | Verlauf, Rekorde, Vorschläge (Doppel-Progression) |
 | `js/timer.js`, `js/charts.js` | Pausentimer, Diagramme |
+| `js/streak.js` | Streak: Trainings in Folge – Ruhetage laut Plan zählen nicht, ein verpasster Trainingstag beendet sie |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline-Betrieb und Installation als App |
 
 Keine Abhängigkeiten, kein Build-Schritt – die Dateien werden so, wie sie sind, ausgeliefert.
