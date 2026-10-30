@@ -268,6 +268,16 @@ input.invalid { border-color: var(--danger) !important; }
 }
 .plan-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-chip .i { width: 16px; height: 16px; flex: none; }
+.plan-switch { display: flex; gap: 8px; margin: 12px 0 0; padding: 4px; overflow-x: auto; background: var(--surface-2); border-radius: 14px; scrollbar-width: none; }
+.plan-switch::-webkit-scrollbar { display: none; }
+.plan-tab {
+  flex: 1 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 42px; padding: 0 14px; border: 0; border-radius: 11px; background: none;
+  font-weight: 700; font-size: 15px; color: var(--muted); white-space: nowrap;
+}
+.plan-tab.active { background: var(--surface); color: var(--accent); box-shadow: 0 1px 3px rgb(0 0 0 / .12); }
+.plan-tab .i { width: 16px; height: 16px; stroke-width: 3; }
+.plan-switch-hint { margin: 6px 4px 0; }
 .plan-head { display: flex; align-items: center; gap: 12px; }
 .plan-head strong { display: block; font-size: 18px; }
 .plan-row { padding: 0 8px 0 0; }

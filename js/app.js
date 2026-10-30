@@ -15,7 +15,7 @@ import {
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.1.1';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -808,9 +808,13 @@ function viewPlans() {
   }).join('');
   return {
     title: 'Pläne', tab: 'plans',
-    html: `${plan ? `<div class="card plan-head">
+    html: `${plans().length > 1 ? `<div class="plan-switch" role="tablist" aria-label="Wochenplan wählen">
+        ${plans().map(p => `<button class="plan-tab${p.id === plan?.id ? ' active' : ''}" role="tab" aria-selected="${p.id === plan?.id}" data-action="plan-activate" data-id="${p.id}">${p.id === plan?.id ? icon('check') : ''}${esc(p.name)}</button>`).join('')}
+      </div>
+      <p class="hint plan-switch-hint">Der gewählte Plan ist aktiv – unter „Training“ erscheinen seine Tage.</p>`
+    : plan ? `<div class="card plan-head">
         <div class="grow"><span class="eyebrow">Aktiver Plan</span><strong>${esc(plan.name)}</strong></div>
-        ${plans().length > 1 ? `<a class="btn soft sm" href="#/settings/plan">Wechseln</a>` : `<a class="btn ghost sm" href="#/settings/plan">Pläne</a>`}
+        <a class="btn ghost sm" href="#/settings/plan">Pläne</a>
       </div>` : ''}
       <div class="card flush">${rows || '<p class="empty">Noch keine Trainingstage in diesem Plan.</p>'}</div>
       <button class="btn ghost block" data-action="add-day">${icon('plus')} Trainingstag hinzufügen</button>
