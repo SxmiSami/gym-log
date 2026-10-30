@@ -6,6 +6,8 @@ const DATA_KEY = 'gymlog.data.v1';
 const LOCAL_KEY = 'gymlog.local.v1';
 
 export const COLLECTIONS = ['exercises', 'days', 'sessions', 'body'];
+// Bewusst ohne Standard für plans/activePlanId: Fehlt das Feld in einer
+// Version (z. B. von einem Gerät mit älterer App), bleibt es beim Zusammenführen erhalten.
 const DEFAULT_SETTINGS = { id: 'settings', restSeconds: 90, increment: 2.5, sound: true, updatedAt: 0 };
 
 let lastTs = 0;
@@ -93,6 +95,14 @@ export function put(c, rec) {
   return rec;
 }
 
+// Für Migrationen: Zeitstempel wird vom Aufrufer gesetzt (nicht "jetzt"),
+// damit echte Änderungen von anderen Geräten beim Sync Vorrang haben
+export function putRaw(c, rec) {
+  data[c][rec.id] = rec;
+  touched();
+  return rec;
+}
+
 export function remove(c, id) {
   const r = data[c][id];
   if (!r) return;
@@ -124,6 +134,11 @@ export function setSettings(patch) {
   touched();
 }
 
+export function setSettingsRaw(patch, updatedAt) {
+  data.settings = { ...data.settings, ...patch, updatedAt };
+  touched();
+}
+
 // ---------- Gerätespezifisch (wird nicht synchronisiert) ----------
 
 export const getLocal = () => local;
@@ -141,10 +156,22 @@ export function merge(a, b) {
     const ids = new Set([...Object.keys(a[c] || {}), ...Object.keys(b[c] || {})]);
     for (const id of ids) {
       const x = a[c]?.[id], y = b[c]?.[id];
-      out[c][id] = !x ? y : !y ? x : (y.updatedAt || 0) > (x.updatedAt || 0) ? y : x;
+      let win = !x ? y : !y ? x : (y.updatedAt || 0) > (x.updatedAt || 0) ? y : x;
+      // Eine automatisch (per Migration) gesetzte Plan-Zuordnung verdrängt nie eine echte
+      const other = win === x ? y : x;
+      if (c === 'days' && win?.planAuto && other?.planId && !other.planAuto) win = { ...win, planId: other.planId, planAuto: false };
+      out[c][id] = win;
     }
   }
-  out.settings = (b.settings?.updatedAt || 0) > (a.settings?.updatedAt || 0) ? { ...a.settings, ...b.settings } : { ...b.settings, ...a.settings };
+  const bNewer = (b.settings?.updatedAt || 0) > (a.settings?.updatedAt || 0);
+  const [older, newer] = bNewer ? [a.settings, b.settings] : [b.settings, a.settings];
+  out.settings = { ...older, ...newer };
+  // Pläne werden nie gelöscht – Liste vereinigen, damit keine Seite einen Plan verliert
+  if (older?.plans || newer?.plans) {
+    const plans = [...(newer?.plans || [])];
+    for (const p of older?.plans || []) if (!plans.some(q => q.id === p.id)) plans.push(p);
+    out.settings.plans = plans;
+  }
   return out;
 }
 

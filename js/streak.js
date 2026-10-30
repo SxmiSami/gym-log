@@ -2,6 +2,7 @@
 // geplanter Trainingstag schon. Heute zählt erst als verpasst, wenn der Tag vorbei ist.
 
 import * as store from './store.js';
+import { planDays } from './plans.js';
 import { isoFromDate, todayISO, dateFromISO, WD_SHORT } from './util.js';
 
 const addDays = (d, n) => {
@@ -11,8 +12,8 @@ const addDays = (d, n) => {
 };
 
 export function streakInfo(todayIso = todayISO()) {
-  // Wochentage, an denen laut Plan trainiert wird (z. B. Mo, Di, Do, Fr, Sa)
-  const planned = new Set(store.all('days').map(d => d.weekday).filter(w => w != null));
+  // Wochentage, an denen laut aktivem Plan trainiert wird (z. B. Mo, Di, Do, Fr, Sa)
+  const planned = new Set(planDays().map(d => d.weekday).filter(w => w != null));
   // importierte Startwerte sind keine Gym-Besuche
   const trained = new Set(store.all('sessions').filter(s => s.finishedAt && !s.imported).map(s => s.date));
   const today = dateFromISO(todayIso);

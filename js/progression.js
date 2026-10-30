@@ -96,8 +96,8 @@ function descending(arr) {
 }
 
 // Verteilt `gain` zusätzliche Wdh auf ein abfallendes Profil: zuerst wird der
-// größte Einbruch gegenüber dem vorherigen Satz aufgefüllt, sonst Satz 1 gesteigert.
-// Aus 8 · 8 · 7 wird so 9 · 8 · 8 statt 9 · 9 · 8.
+// größte Einbruch gegenüber dem vorherigen Satz aufgefüllt (bei Gleichstand der
+// spätere), sonst Satz 1 gesteigert. Aus 8 · 8 · 7 wird 9 · 8 · 8, aus 11 · 9 · 9 wird 11 · 10 · 10.
 function addReps(base, gain, cap) {
   const t = [...base];
   for (let k = 0; k < gain; k++) {
@@ -106,7 +106,7 @@ function addReps(base, gain, cap) {
       const ceiling = i === 0 ? cap : Math.min(cap, t[i - 1]);
       if (v + 1 > ceiling) return;
       const gap = i === 0 ? 0 : t[i - 1] - v;
-      if (gap > bestGap) { best = i; bestGap = gap; }
+      if (gap >= bestGap) { best = i; bestGap = gap; }
     });
     if (best < 0) break;
     t[best]++;

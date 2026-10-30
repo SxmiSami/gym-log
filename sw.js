@@ -2,7 +2,7 @@
 // und holt sich im Hintergrund die neueste Version für den nächsten Start.
 // Bei jeder neuen Version VERSION erhöhen.
 
-const VERSION = '1.0.5';
+const VERSION = '1.1.0';
 const CACHE = 'gymlog-' + VERSION;
 const ASSETS = [
   './',
@@ -14,6 +14,7 @@ const ASSETS = [
   './js/timer.js',
   './js/progression.js',
   './js/streak.js',
+  './js/plans.js',
   './js/charts.js',
   './js/icons.js',
   './js/util.js',

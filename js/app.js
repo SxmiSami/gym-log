@@ -6,12 +6,16 @@ import { lineChart, sparkline, weekBars } from './charts.js';
 import { icon, flameArt } from './icons.js';
 import { streakInfo } from './streak.js';
 import {
+  plans, activePlanId, activePlan, planName, planDays, ensurePlan, migratePlans,
+  blockLetter, blockType, nextInBlock, restFor,
+} from './plans.js';
+import {
   esc, uid, fmtNum, fmtBig, parseNum, todayISO, dateFromISO, fmtDate, relDays, relTime,
   fmtDuration, parseScheme, formatScheme, schemeInput, rangeText, setsSummary, fmtClock,
   WEEKDAYS, WD_SHORT, MONTHS,
 } from './util.js';
 
-const VERSION = '1.0.5';
+const VERSION = '1.1.0';
 
 const $view = document.getElementById('view');
 const $title = document.getElementById('title');
@@ -275,10 +279,15 @@ function streakCard() {
   </div>`;
 }
 
+const planChip = () => {
+  const p = activePlan();
+  return p ? `<a class="plan-chip" href="#/settings/plan">${icon('plans')}<span>${esc(p.name)}</span>${icon('chev')}</a>` : '';
+};
+
 function viewHome() {
   if (store.isEmpty()) return viewWelcome();
   const act = activeSession();
-  const days = store.all('days').sort(byOrder);
+  const days = planDays().sort(byOrder);
   const now = new Date();
   const wd = now.getDay();
   const today = days.find(d => d.weekday === wd);
@@ -301,7 +310,7 @@ function viewHome() {
     hero = `<div class="card hero">
       <span class="eyebrow">${dateLine}</span>
       <h2>Heute: ${esc(today.name)}</h2>
-      <p class="muted">${nUebungen(today.items.length)}${last ? ` · zuletzt ${relDays(last.date)}` : ''}</p>
+      <p class="muted">${today.subtitle ? `${esc(today.subtitle)} · ` : ''}${nUebungen(today.items.length)}${last ? ` · zuletzt ${relDays(last.date)}` : ''}</p>
       <button class="btn primary block lg" data-action="start-day" data-id="${today.id}">${icon('dumbbell')} Training starten</button></div>`;
   } else {
     hero = `<div class="card hero">
@@ -317,7 +326,7 @@ function viewHome() {
       <a class="day-info" href="#/day/${d.id}">
         <span class="eyebrow">${d.weekday != null ? WEEKDAYS[d.weekday] : 'Ohne festen Tag'}</span>
         <strong>${esc(d.name)}</strong>
-        <span class="muted small">${nUebungen(d.items.length)} · ${last ? 'zuletzt ' + relDays(last.date) : 'noch nicht trainiert'}</span>
+        <span class="muted small">${d.subtitle ? `${esc(d.subtitle)} · ` : ''}${nUebungen(d.items.length)} · ${last ? 'zuletzt ' + relDays(last.date) : 'noch nicht trainiert'}</span>
       </a>
       <button class="btn ${isToday && !act ? 'primary' : 'soft'}" data-action="start-day" data-id="${d.id}">Start</button>
     </div>`;
@@ -336,7 +345,8 @@ function viewHome() {
 
   return {
     title: 'Training', tab: 'home', mount: startClocks,
-    html: `${streakCard()}
+    html: `${planChip()}
+      ${streakCard()}
       ${hero}
       <h3 class="section-label">Deine Trainingstage</h3>
       <div class="card flush">${rows || '<p class="empty">Noch keine Trainingstage.</p>'}</div>
@@ -347,10 +357,12 @@ function viewHome() {
 
 // ---------- Ansicht: laufendes / bearbeitetes Training ----------
 
-function newEntry(s, exId, planned, group, startWeight) {
-  const sug = suggest(exId, planned, { before: s.startedAt, excludeSessionId: s.id, startWeight });
+// item: Eintrag aus dem Plan (Block, Pause, Hinweis werden ins Training übernommen)
+function newEntry(s, exId, planned, item = {}) {
+  const sug = suggest(exId, planned, { before: s.startedAt, excludeSessionId: s.id, startWeight: item.startWeight });
   return {
-    id: uid(), exId, group: group || '', startWeight: startWeight ?? null, note: '',
+    id: uid(), exId, group: item.group || '', startWeight: item.startWeight ?? null, note: '',
+    block: item.block || null, restSeconds: item.restSeconds ?? null, hint: item.hint || '',
     sets: planned.map((p, i) => ({ min: p.min ?? null, max: p.max ?? null, w: sug.sets[i]?.w ?? null, r: null, done: false })),
   };
 }
@@ -366,12 +378,13 @@ async function startSession(dayId) {
   const day = dayId ? store.get('days', dayId) : null;
   const s = {
     id: uid(), dayId: day?.id || null, name: day ? day.name : 'Freies Training',
+    planId: day?.planId || null, planName: day ? planName(day.planId) : '',
     date: todayISO(), startedAt: Date.now(), finishedAt: null, note: '', entries: [],
   };
   if (day) {
     s.entries = day.items
       .filter(it => store.get('exercises', it.exId))
-      .map(it => newEntry(s, it.exId, it.sets, it.group, it.startWeight));
+      .map(it => newEntry(s, it.exId, it.sets, it));
   }
   saveSession(s);
   location.hash = '#/workout/' + s.id;
@@ -385,13 +398,26 @@ function viewWorkout(id) {
 
   let body = '';
   let lastGroup = null;
+  let lastLetter = null;
   for (const e of s.entries) {
-    if (e.group && e.group !== lastGroup) body += `<h3 class="section-label">${esc(e.group)}</h3>`;
-    if (e.group) lastGroup = e.group;
+    const letter = blockLetter(e.block);
+    if (letter) {
+      // Block-Überschrift, z. B. "Block A · Supersatz"
+      if (letter !== lastLetter) {
+        const type = blockType(s, letter);
+        body += `<h3 class="section-label">Block ${letter}${type ? ` · ${type}` : ''}</h3>`;
+      }
+      lastGroup = null;
+    } else if (e.group && e.group !== lastGroup) {
+      body += `<h3 class="section-label">${esc(e.group)}</h3>`;
+    }
+    lastLetter = letter;
+    if (!letter && e.group) lastGroup = e.group;
     body += entryCard(s, e);
   }
 
   const head = `<div class="card wk-head">
+      ${s.planName ? `<span class="eyebrow wk-plan">${icon('plans')}${esc(s.planName)}</span>` : ''}
       <div class="row-between">
         ${editing
           ? `<label class="date-field">${icon('calendar')}<input type="date" data-bind="session-date" value="${s.date}" max="${todayISO()}" aria-label="Datum"></label>`
@@ -428,15 +454,17 @@ function entryCard(s, e) {
   const noteOpen = !!e.note || ui.noteOpen.has(e.id);
   const tipSets = sug.sets.map(x => ({ w: x?.w ?? null, r: x?.target ?? null }));
   const showTipSets = hist.length > 0 || e.startWeight != null;
+  const restTxt = e.restSeconds === 0 ? 'ohne Pause weiter' : e.restSeconds != null ? `Pause ${fmtRest(e.restSeconds)}` : '';
 
   return `<article class="card ex-card${complete ? ' complete' : ''}" data-entry="${e.id}">
     <header class="ex-head">
       <div class="grow">
-        <h3>${esc(ex?.name || 'Unbekannte Übung')}</h3>
-        <span class="muted small">Ziel: ${formatScheme(e.sets)}</span>
+        <h3>${e.block ? `<span class="block-badge">${esc(e.block)}</span>` : ''}${esc(ex?.name || 'Unbekannte Übung')}</h3>
+        <span class="muted small">Ziel: ${formatScheme(e.sets)}${restTxt ? ` · ${restTxt}` : ''}</span>
       </div>
       <button class="icon-btn" data-action="entry-menu" aria-label="Optionen">${icon('dots')}</button>
     </header>
+    ${e.hint ? `<p class="ex-hint">${icon('target')}<span>${esc(e.hint)}</span></p>` : ''}
     ${ex?.note ? `<p class="ex-pin">${icon('info')}<span>${esc(ex.note)}</span></p>` : ''}
     ${last ? `<p class="ex-last"><span class="tag">${last.session.imported ? 'Startwert' : 'Letztes Mal'}</span>${last.session.imported ? '' : `<span class="muted">${fmtDate(last.session.date)}</span>`}<b>${setsSummary(last.entry.sets)}</b></p>` : ''}
     ${s.finishedAt ? '' : `<div class="ex-tip">
@@ -673,7 +701,13 @@ function viewExercise(id) {
   const unit = m === 'reps' || m === 'best' ? 'Wdh' : 'kg';
   const points = chrono.map(x => ({ x: x.session.startedAt, y: metricValue(x.entry, m) }));
   const b = bests(h);
-  const usedIn = store.all('days').filter(d => d.items.some(it => it.exId === id)).sort(byOrder).map(d => d.name);
+  // "Plan B: Tag 1, Tag 3 · Plan A: Tag 1"
+  const usedIn = plans().length
+    ? plans().map(p => {
+      const names = planDays(p.id).filter(d => d.items.some(it => it.exId === id)).sort(byOrder).map(d => d.name);
+      return names.length ? `${p.name}: ${names.join(', ')}` : '';
+    }).filter(Boolean)
+    : store.all('days').filter(d => d.items.some(it => it.exId === id)).sort(byOrder).map(d => d.name);
   const visits = h.filter(x => !x.session.imported);
   const lastTxt = visits[0] ? 'zuletzt ' + relDays(visits[0].session.date) : h.length ? 'bisher nur Startwert' : '';
   const tiles = weighted
@@ -711,7 +745,7 @@ function viewExercise(id) {
         </div>
         <label class="field-block"><span class="label">Dauerhafte Notiz</span>
           <textarea data-bind="ex-note" rows="2" placeholder="z. B. Sitzhöhe 4, Griff eng">${esc(ex.note || '')}</textarea></label>
-        <p class="hint">${usedIn.length ? `In deinen Plänen: ${usedIn.map(esc).join(', ')}` : 'In keinem Plan.'}</p>
+        <p class="hint">${usedIn.length ? `In deinen Plänen: ${usedIn.map(esc).join(' · ')}` : 'In keinem Plan.'}<br>Die Pause hier gilt, wenn im Plan keine eigene Pause steht.</p>
       </div>
       ${ex.deleted ? '' : `<button class="btn text danger block" data-action="delete-exercise" data-id="${id}">${icon('trash')} Übung löschen</button>`}`,
   };
@@ -754,15 +788,17 @@ function viewBody() {
 // ---------- Ansicht: Pläne ----------
 
 function viewPlans() {
-  const days = store.all('days').sort(byOrder);
+  const days = planDays().sort(byOrder);
+  const plan = activePlan();
   const trashCount = store.trash('days').length;
   const rows = days.map((d, i) => {
     const groups = [...new Set(d.items.map(it => it.group).filter(Boolean))];
+    const detail = d.subtitle ? esc(d.subtitle) : groups.map(esc).join(', ');
     return `<div class="day-row">
       <a class="day-info" href="#/day/${d.id}">
         <span class="eyebrow">${d.weekday != null ? WEEKDAYS[d.weekday] : 'Ohne festen Tag'}</span>
         <strong>${esc(d.name)}</strong>
-        <span class="muted small">${nUebungen(d.items.length)}${groups.length ? ' · ' + groups.map(esc).join(', ') : ''}</span>
+        <span class="muted small">${nUebungen(d.items.length)}${detail ? ' · ' + detail : ''}</span>
       </a>
       <div class="mini-btns">
         <button class="icon-btn" data-action="day-move" data-id="${d.id}" data-dir="-1"${i === 0 ? ' disabled' : ''} aria-label="Nach oben">${icon('up')}</button>
@@ -772,7 +808,11 @@ function viewPlans() {
   }).join('');
   return {
     title: 'Pläne', tab: 'plans',
-    html: `<div class="card flush">${rows || '<p class="empty">Noch keine Trainingstage.</p>'}</div>
+    html: `${plan ? `<div class="card plan-head">
+        <div class="grow"><span class="eyebrow">Aktiver Plan</span><strong>${esc(plan.name)}</strong></div>
+        ${plans().length > 1 ? `<a class="btn soft sm" href="#/settings/plan">Wechseln</a>` : `<a class="btn ghost sm" href="#/settings/plan">Pläne</a>`}
+      </div>` : ''}
+      <div class="card flush">${rows || '<p class="empty">Noch keine Trainingstage in diesem Plan.</p>'}</div>
       <button class="btn ghost block" data-action="add-day">${icon('plus')} Trainingstag hinzufügen</button>
       <a class="btn ghost block" href="#/exercises">${icon('list')} Alle Übungen verwalten</a>
       ${trashCount ? `<a class="btn text block" href="#/settings/papierkorb">${icon('trash')} Papierkorb (${trashCount})</a>` : ''}`,
@@ -784,18 +824,22 @@ function viewDay(id) {
   if (!d) return notFound('Trainingstag nicht gefunden.', '#/plans');
   const groups = [...new Set(store.all('days').flatMap(x => x.items.map(it => it.group)).filter(Boolean))];
   const wdOpts = [['', 'Kein fester Tag'], ...[1, 2, 3, 4, 5, 6, 0].map(n => [String(n), WEEKDAYS[n]])];
+  const restOpts = [['', `Standard (${fmtRest(store.settings().restSeconds || 90)})`], ['0', 'keine'], ...[30, 45, 60, 75, 90, 120, 150, 180, 240, 300].map(s => [String(s), fmtRest(s)])];
   const items = d.items.map((it, i) => `<div class="card item-card" data-item="${it.id}">
       <div class="item-top">
-        <span class="item-no">${i + 1}</span>
+        <span class="item-no${it.block ? ' has-block' : ''}">${esc(it.block || String(i + 1))}</span>
         <button class="item-ex" data-action="item-exercise"><span>${esc(exName(it.exId))}</span>${icon('chev')}</button>
         <button class="icon-btn" data-action="item-move" data-dir="-1"${i === 0 ? ' disabled' : ''} aria-label="Nach oben">${icon('up')}</button>
         <button class="icon-btn" data-action="item-move" data-dir="1"${i === d.items.length - 1 ? ' disabled' : ''} aria-label="Nach unten">${icon('down')}</button>
         <button class="icon-btn danger-text" data-action="item-remove" aria-label="Aus dem Plan entfernen">${icon('x')}</button>
       </div>
       <div class="item-fields">
-        <label class="field-block"><span class="label">Gruppe</span><input data-bind="item-group" value="${esc(it.group || '')}" placeholder="z. B. Brust" list="group-list"></label>
-        <label class="field-block"><span class="label">Sätze × Wdh</span><input data-bind="item-scheme" value="${esc(schemeInput(it.sets))}" placeholder="3x 8-12" autocapitalize="off" autocorrect="off" spellcheck="false"><small class="scheme-preview">${formatScheme(it.sets)}</small></label>
-        <label class="field-block"><span class="label">Startgewicht</span><span class="with-unit"><input class="num left" data-bind="item-start" inputmode="decimal" value="${fmtNum(it.startWeight)}" placeholder="optional"><span class="unit">kg</span></span></label>
+        <label class="field-block f-scheme"><span class="label">Sätze × Wdh</span><input data-bind="item-scheme" value="${esc(schemeInput(it.sets))}" placeholder="3x 8-12" autocapitalize="off" autocorrect="off" spellcheck="false"><small class="scheme-preview">${formatScheme(it.sets)}</small></label>
+        <label class="field-block f-block"><span class="label">Block</span><input data-bind="item-block" value="${esc(it.block || '')}" placeholder="z. B. A1" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="3"></label>
+        <label class="field-block f-rest"><span class="label">Pause danach</span><select data-bind="item-rest">${restOpts.map(([v, l]) => `<option value="${v}"${String(it.restSeconds ?? '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field-block f-group"><span class="label">Gruppe</span><input data-bind="item-group" value="${esc(it.group || '')}" placeholder="optional" list="group-list"></label>
+        <label class="field-block f-start"><span class="label">Startgewicht</span><span class="with-unit"><input class="num left" data-bind="item-start" inputmode="decimal" value="${fmtNum(it.startWeight)}" placeholder="optional"><span class="unit">kg</span></span></label>
+        <label class="field-block f-hint"><span class="label">Hinweis</span><input data-bind="item-hint" value="${esc(it.hint || '')}" placeholder="z. B. bis Versagen im letzten Satz"></label>
       </div>
     </div>`).join('');
 
@@ -803,16 +847,20 @@ function viewDay(id) {
     title: d.name, tab: 'plans', back: '#/plans',
     html: `<div data-day="${id}">
         <div class="card form">
+          ${d.planId && planName(d.planId) ? `<span class="eyebrow day-plan">${icon('plans')}${esc(planName(d.planId))}</span>` : ''}
           <div class="two">
             <label class="field-block"><span class="label">Name</span><input data-bind="day-name" value="${esc(d.name)}"></label>
             <label class="field-block"><span class="label">Wochentag</span><select data-bind="day-weekday">${wdOpts.map(([v, l]) => `<option value="${v}"${String(d.weekday ?? '') === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>
           </div>
+          <label class="field-block"><span class="label">Schwerpunkt</span><input data-bind="day-subtitle" value="${esc(d.subtitle || '')}" placeholder="optional, z. B. Brust & Rücken"></label>
         </div>
         <h3 class="section-label">Übungen</h3>
         ${items || '<p class="empty">Noch keine Übungen in diesem Plan.</p>'}
         <datalist id="group-list">${groups.map(g => `<option value="${esc(g)}">`).join('')}</datalist>
         <button class="btn ghost block" data-action="add-item">${icon('plus')} Übung hinzufügen</button>
-        <p class="hint">Sätze schreibst du wie in deiner Liste: <code>3x 8-12</code>, <code>2x 5-8 + 1x 8-12</code>, <code>3x 25</code> oder nur <code>3x</code>. Das Startgewicht wird nur genutzt, solange es für die Übung noch keine Daten gibt.</p>
+        <p class="hint">Sätze schreibst du wie in deiner Liste: <code>3x 8-12</code>, <code>2x 5-8 + 1x 8-12</code>, <code>3x 25</code> oder nur <code>3x</code>.
+          Übungen mit gleichem Buchstaben (<code>A1</code>, <code>A2</code>) gehören zusammen und werden im Wechsel gemacht – mit „Pause: keine“ bei der ersten wird es ein Supersatz.
+          Das Startgewicht wird nur genutzt, solange es für die Übung noch keine Daten gibt.</p>
         <button class="btn soft block" data-action="start-day" data-id="${id}">${icon('dumbbell')} Diesen Tag jetzt trainieren</button>
         <button class="btn text danger block" data-action="delete-day" data-id="${id}">${icon('trash')} Trainingstag löschen</button>
       </div>`,
@@ -823,7 +871,7 @@ function viewExercises() {
   const uses = {};
   store.all('days').forEach(d => d.items.forEach(it => { uses[it.exId] = (uses[it.exId] || 0) + 1; }));
   const rows = store.all('exercises').sort(byName).map(e => `<a class="list-row" href="#/exercise/${e.id}" data-name="${esc(e.name.toLowerCase())}">
-      <div class="grow"><strong>${esc(e.name)}</strong><span class="muted small">${uses[e.id] ? `in ${uses[e.id]} ${uses[e.id] === 1 ? 'Plan' : 'Plänen'}` : 'in keinem Plan'}</span></div>
+      <div class="grow"><strong>${esc(e.name)}</strong><span class="muted small">${uses[e.id] ? `an ${uses[e.id]} ${uses[e.id] === 1 ? 'Trainingstag' : 'Trainingstagen'}` : 'in keinem Plan'}</span></div>
       ${icon('chev', 'chev')}</a>`).join('');
   return {
     title: 'Übungen', tab: 'plans', back: '#/plans',
@@ -856,10 +904,34 @@ function renderSyncBtn(st) {
   $sync.setAttribute('aria-label', 'Sync: ' + statusText());
 }
 
+function planSection() {
+  const list = plans();
+  const active = activePlanId();
+  const rows = list.map(p => {
+    const days = planDays(p.id).sort(byOrder);
+    const wds = days.filter(d => d.weekday != null).map(d => WD_SHORT[d.weekday]).join(', ');
+    const on = p.id === active;
+    return `<div class="list-row plan-row${on ? ' active' : ''}">
+      <button class="plan-pick" data-action="plan-activate" data-id="${p.id}" aria-pressed="${on}">
+        <span class="plan-check">${on ? icon('check') : ''}</span>
+        <span class="grow"><strong>${esc(p.name)}</strong><span class="muted small">${days.length} ${days.length === 1 ? 'Trainingstag' : 'Trainingstage'}${wds ? ` · ${wds}` : ''}${on ? ' · aktiv' : ''}</span></span>
+      </button>
+      <button class="icon-btn" data-action="plan-rename" data-id="${p.id}" aria-label="„${esc(p.name)}“ umbenennen">${icon('note')}</button>
+    </div>`;
+  }).join('');
+  return `<h3 class="section-label" id="plan">Trainingsplan</h3>
+    <div class="card flush">
+      ${rows || '<p class="empty small">Noch kein Plan. Lege unter „Pläne“ deinen ersten Trainingstag an.</p>'}
+      <button class="list-row" data-action="plan-new">${icon('plus')}<div class="grow"><strong>Neuer Plan</strong><span class="muted small">Startet leer – Tage legst du danach unter „Pläne“ an</span></div></button>
+    </div>
+    <p class="hint">Der aktive Plan bestimmt die Tage unter „Training“ und „Pläne“. Werte und Verlauf hängen an der Übung, nicht am Plan – beim Wechseln geht nichts verloren.</p>`;
+}
+
 function trashSection() {
   const days = store.trash('days').sort((a, b) => b.updatedAt - a.updatedAt);
+  const showPlan = plans().length > 1;
   const rows = days.map(d => `<div class="list-row trash-row">
-      <div class="grow"><strong>${esc(d.name)}</strong><span class="muted small">${nUebungen(d.items?.length || 0)} · gelöscht ${relTime(d.updatedAt)}</span></div>
+      <div class="grow"><strong>${esc(d.name)}</strong><span class="muted small">${showPlan && planName(d.planId) ? `${esc(planName(d.planId))} · ` : ''}${nUebungen(d.items?.length || 0)} · gelöscht ${relTime(d.updatedAt)}</span></div>
       <button class="btn soft sm" data-action="trash-restore" data-id="${d.id}">Wiederherstellen</button>
       <button class="icon-btn danger-text" data-action="trash-purge" data-id="${d.id}" aria-label="„${esc(d.name)}“ endgültig löschen">${icon('trash')}</button>
     </div>`).join('');
@@ -879,9 +951,11 @@ function viewSettings(arg) {
   const rest = [45, 60, 75, 90, 120, 150, 180, 240, 300];
   return {
     title: 'Mehr', tab: 'settings',
-    // erst nach dem Zurückscrollen von render() zum Papierkorb springen
-    mount: () => { if (arg === 'papierkorb') setTimeout(() => document.getElementById('papierkorb')?.scrollIntoView({ block: 'start' }), 0); },
-    html: `<h3 class="section-label">Synchronisierung</h3>
+    // erst nach dem Zurückscrollen von render() zum Abschnitt springen (#/settings/plan, #/settings/papierkorb)
+    mount: () => { if (arg) setTimeout(() => document.getElementById(arg)?.scrollIntoView({ block: 'start' }), 0); },
+    html: `${planSection()}
+
+      <h3 class="section-label">Synchronisierung</h3>
       <div class="card form">
         <p class="status-line s-${sync.getStatus().state}" id="sync-status">${esc(statusText())}</p>
         <label class="field-block"><span class="label">Privates GitHub-Repository</span>
@@ -915,7 +989,7 @@ function viewSettings(arg) {
         <label class="row-field"><span>Ton am Pausenende</span><input type="checkbox" class="switch" data-bind="set-sound"${st.sound !== false ? ' checked' : ''}></label>
         <label class="row-field"><span>Gewichts-Schritt</span>
           <span class="with-unit sm"><input class="num left" data-bind="set-inc" inputmode="decimal" value="${fmtNum(st.increment)}"><span class="unit">kg</span></span></label>
-        <p class="hint">Pause und Schritt kannst du pro Übung ändern (Fortschritt → Übung → Einstellungen). Auf dem iPhone kommt der Ton nur, solange die App offen ist und der Stumm-Schalter aus ist.</p>
+        <p class="hint">Die Pause nach einer Übung stellst du im Plan ein (Pläne → Tag → „Pause danach“); ohne Angabe gilt die Pause der Übung oder dieser Standard. Den Gewichts-Schritt änderst du pro Übung unter Fortschritt → Übung. Auf dem iPhone kommt der Ton nur, solange die App offen ist und der Stumm-Schalter aus ist.</p>
       </div>
 
       <h3 class="section-label">Darstellung</h3>
@@ -1011,7 +1085,7 @@ const actions = {
   // Training
   'toggle-set'(el) {
     document.activeElement?.blur?.();
-    const { s, e, set, row } = ctxOf(el);
+    const { s, e, i, set, row } = ctxOf(el);
     if (!set) return;
     if (!set.done) {
       if (set.r == null) {
@@ -1022,8 +1096,15 @@ const actions = {
       }
       set.done = true;
       if (!s.finishedAt) {
-        const ex = store.get('exercises', e.exId);
-        timer.start(ex?.restSeconds || store.settings().restSeconds || 90);
+        const rest = restFor(s, e, i);
+        if (rest > 0) {
+          timer.start(rest);
+        } else {
+          // Supersatz: kein Timer, direkt zur Partnerübung
+          timer.stop();
+          const next = nextInBlock(s, e);
+          if (next) toast(`Ohne Pause weiter: ${next.block ? `${next.block} · ` : ''}${exName(next.exId)}`);
+        }
       }
     } else {
       set.done = false;
@@ -1126,10 +1207,12 @@ const actions = {
     const exId = await pickExercise('Übung hinzufügen');
     if (!exId) return;
     const s = store.get('sessions', sid);
-    const plan = store.all('days').flatMap(d => d.items).find(it => it.exId === exId);
+    // Vorgaben bevorzugt aus dem aktiven Plan; ohne Block, weil die Übung hier keinen Partner hat
+    const plan = planDays().flatMap(d => d.items).find(it => it.exId === exId)
+      || store.all('days').flatMap(d => d.items).find(it => it.exId === exId);
     const lastE = history(exId)[0]?.entry;
     const planned = plan?.sets || lastE?.sets.map(x => ({ min: x.min ?? null, max: x.max ?? null })) || [{ min: null, max: null }, { min: null, max: null }, { min: null, max: null }];
-    const entry = newEntry(s, exId, planned, plan?.group || '', plan?.startWeight ?? null);
+    const entry = newEntry(s, exId, planned, { ...plan, block: null });
     s.entries.push(entry);
     saveSession(s);
     rerender();
@@ -1201,8 +1284,32 @@ const actions = {
   },
 
   // Pläne
+  'plan-activate'(el) {
+    const id = el.dataset.id;
+    if (id !== activePlanId()) {
+      store.setSettings({ activePlanId: id });
+      toast(`„${planName(id)}“ ist jetzt dein aktiver Plan`);
+    }
+    rerender();
+  },
+  async 'plan-rename'(el) {
+    const id = el.dataset.id;
+    const name = await promptSheet('Plan umbenennen', planName(id), { placeholder: 'Name des Plans' });
+    if (!name?.trim()) return;
+    store.setSettings({ plans: plans().map(p => (p.id === id ? { ...p, name: name.trim() } : p)) });
+    rerender();
+  },
+  async 'plan-new'() {
+    const name = await promptSheet('Neuer Plan', '', { placeholder: 'z. B. Ganzkörper', ok: 'Anlegen', hint: 'Der neue Plan wird aktiv. Deine anderen Pläne bleiben unverändert erhalten.' });
+    if (!name?.trim()) return;
+    migratePlans(); // vorhandene Tage ohne Plan bekommen zuerst ihren eigenen Plan
+    const id = uid();
+    store.setSettings({ plans: [...plans(), { id, name: name.trim() }], activePlanId: id });
+    location.hash = '#/plans';
+    toast(`„${name.trim()}“ angelegt – jetzt Trainingstage hinzufügen`);
+  },
   'day-move'(el) {
-    const days = store.all('days').sort(byOrder);
+    const days = planDays().sort(byOrder);
     const i = days.findIndex(d => d.id === el.dataset.id);
     const j = i + Number(el.dataset.dir);
     if (i < 0 || j < 0 || j >= days.length) return;
@@ -1211,8 +1318,9 @@ const actions = {
     rerender();
   },
   'add-day'() {
-    const days = store.all('days');
-    const d = { id: uid(), name: 'Neuer Tag', weekday: null, order: days.length ? Math.max(...days.map(x => x.order ?? 0)) + 1 : 0, items: [] };
+    const planId = ensurePlan();
+    const days = planDays(planId);
+    const d = { id: uid(), planId, name: 'Neuer Tag', weekday: null, order: days.length ? Math.max(...days.map(x => x.order ?? 0)) + 1 : 0, items: [] };
     store.put('days', d);
     location.hash = '#/day/' + d.id;
   },
@@ -1460,6 +1568,31 @@ const binds = {
     d.weekday = el.value === '' ? null : Number(el.value);
     store.put('days', d);
   },
+  'day-subtitle'(el, type) {
+    const d = dayOf(el);
+    if (!d) return;
+    d.subtitle = type === 'change' ? el.value.trim() : el.value;
+    store.put('days', d);
+  },
+  'item-block'(el, type) {
+    const { d, it } = itemOf(el);
+    if (!it) return;
+    it.block = el.value.trim().toUpperCase() || null;
+    store.put('days', d);
+    if (type === 'change') rerender();
+  },
+  'item-rest'(el) {
+    const { d, it } = itemOf(el);
+    if (!it) return;
+    it.restSeconds = el.value === '' ? null : Number(el.value);
+    store.put('days', d);
+  },
+  'item-hint'(el, type) {
+    const { d, it } = itemOf(el);
+    if (!it) return;
+    it.hint = type === 'change' ? el.value.trim() : el.value;
+    store.put('days', d);
+  },
   'item-group'(el) {
     const { d, it } = itemOf(el);
     if (!it) return;
@@ -1507,6 +1640,7 @@ const binds = {
 // ---------- Start ----------
 
 function init() {
+  migratePlans();
   applyTheme();
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
   timer.init();
@@ -1551,6 +1685,7 @@ function init() {
     sync.syncSoon(activeSession() ? 90000 : 8000);
   });
   store.on('remote', () => {
+    migratePlans(); // Daten von einem Gerät mit älterer App-Version
     if (isBusy()) ui.deferred = true;
     else rerender();
   });

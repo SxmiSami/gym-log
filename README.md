@@ -16,6 +16,7 @@ privates GitHub-Repository zwischen den Geräten ab.
 | `js/progression.js` | Verlauf, Rekorde, Vorschläge (Doppel-Progression) |
 | `js/timer.js`, `js/charts.js` | Pausentimer, Diagramme |
 | `js/streak.js` | Streak: Trainings in Folge – Ruhetage laut Plan zählen nicht, ein verpasster Trainingstag beendet sie |
+| `js/plans.js` | Mehrere Trainingspläne, aktiver Plan, Blöcke (Supersätze) und Pausen pro Übung |
 | `sw.js`, `manifest.webmanifest`, `icons/` | Offline-Betrieb und Installation als App |
 
 Keine Abhängigkeiten, kein Build-Schritt – die Dateien werden so, wie sie sind, ausgeliefert.
@@ -55,6 +56,17 @@ Jeder Sync ist ein Commit – das Daten-Repo ist damit gleichzeitig ein Backup m
 
 - **iPhone / iPad:** Seite in Safari öffnen → Teilen → „Zum Home-Bildschirm“.
 - **PC:** In Chrome oder Edge auf das Installieren-Symbol in der Adressleiste klicken.
+
+## Trainingspläne, Blöcke und Pausen
+
+- Unter **Mehr → Trainingsplan** stehen alle Pläne; der markierte ist aktiv und bestimmt die Tage
+  unter „Training“ und „Pläne“. Wechseln löscht nichts – Werte und Verlauf hängen an der Übung.
+- Jede Übung im Plan kann einen **Block** haben (`A1`, `A2`, `B1` …): gleicher Buchstabe = zusammen,
+  im Wechsel. Einzelübungen haben eine Nummer (`1`, `2`) oder nur einen Buchstaben (`C`).
+- **Pause danach** pro Übung im Plan: nach jedem abgehakten Satz startet der Timer mit dieser Zeit.
+  „keine“ = Supersatz, direkt zur Partnerübung. Hat eine Übung mehr Sätze als ihr Partner, gelten
+  für die übrigen Sätze 60 s. Ohne Angabe gilt die Pause der Übung bzw. die Standard-Pause.
+- Optionaler **Hinweis** pro Übung (z. B. „bis Versagen, mind. im letzten Satz“) erscheint im Training.
 
 ## Vorschläge – wie sie entstehen
 
